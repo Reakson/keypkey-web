@@ -150,7 +150,7 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
 
             {isLogin ? (
               <>
-                <div className="kk-form-title">Welcome to Keypkey</div>
+                <div className="kk-form-title">Welcome to KeypKey</div>
                 <div className="kk-form-sub">Sign in to access your encrypted vault.</div>
 
                 <form onSubmit={handleLogin}>
