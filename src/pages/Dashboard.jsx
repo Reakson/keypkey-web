@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 
-function computeStrength(pwd = '') {
-  let score = 0;
-  if (pwd.length >= 12) score++;
-  if (/[a-z]/.test(pwd)) score++;
-  if (/[A-Z]/.test(pwd)) score++;
-  if (/\d/.test(pwd)) score++;
-  if (/[^A-Za-z0-9]/.test(pwd)) score++;
-
-  if (score >= 5) return 'STRONG';
-  if (score >= 3) return 'MEDIUM';
-  return 'WEAK';
+function computeStrength(pwd) {
+  if (!pwd) return null;
+  let s = 0;
+  if (pwd.length >= 8) s++;
+  if (pwd.length >= 12) s++;
+  const sets = [/[a-z]/.test(pwd), /[A-Z]/.test(pwd), /\d/.test(pwd), /[^A-Za-z0-9]/.test(pwd)].filter(Boolean).length;
+  if (sets >= 2) s++;
+  if (sets >= 3) s++;
+  return ['WEAK', 'WEAK', 'MEDIUM', 'STRONG', 'STRONG'][s];
 }
 
-export default function Dashboard({ itemsForStats, setItemsForStats }) {
+function firstLetter(s) {
+  return (s?.trim()?.[0] || '?').toUpperCase();
+}
+
+export default function Dashboard({ setItemsForStats }) {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +28,7 @@ export default function Dashboard({ itemsForStats, setItemsForStats }) {
       try {
         const vault = await api('/password');
         setItems(vault);
-        if (setItemsForStats) setItemsForStats(vault);
+        setItemsForStats?.(vault);
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
         setItems([]);
@@ -61,119 +65,151 @@ export default function Dashboard({ itemsForStats, setItemsForStats }) {
 
     const reused = usable.filter((it) => reusedPwds.has(it.password));
 
-    const riskyIds = new Set([
-      ...usable
-        .filter((it) => computeStrength(it.password) === 'WEAK')
-        .map((it) => it.id),
-      ...reused.map((it) => it.id),
-    ]);
-
-    const risky = usable.filter((it) => riskyIds.has(it.id));
+    const risky = usable.filter((it) => computeStrength(it.password) === 'WEAK');
 
     return { total: items.length, strong, medium, weak, reused, risky };
   }, [items]);
 
-  const health = total
-    ? Math.round(((strong * 100) + (medium * 60) + (weak * 20)) / total)
-    : 0;
+  const score = total === 0 ? null : Math.round((strong / total) * 100);
+  const scoreColor =
+    score === null
+      ? 'var(--muted)'
+      : score >= 70
+        ? 'var(--success)'
+        : score >= 40
+          ? 'var(--gold)'
+          : 'var(--danger)';
+  const scoreLabel = score === null ? '—' : score >= 70 ? 'Good' : score >= 40 ? 'Fair' : 'Poor';
 
   if (loading) {
     return (
-      <div className="page">
+      <div>
         <div className="page-header">
-          <h1>Security Report</h1>
-          <span>Analyzing your vault...</span>
+          <h1 className="page-title">Security Report</h1>
+        </div>
+        <div className="card" style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: '2rem' }}>
+          Analysing your vault…
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page">
+    <div>
       <div className="page-header">
-        <h1>Security Report</h1>
-        <span>Based on {total} credentials</span>
+        <h1 className="page-title">Security Report</h1>
+        <span className="page-subtitle">Based on {total} credential{total !== 1 ? 's' : ''}</span>
       </div>
 
-      <section className="stats-grid">
-        <div className="stat-card cyan">
-          <div className="stat-label">Total</div>
-          <div className="stat-value">{total}</div>
-        </div>
-        <div className="stat-card green">
-          <div className="stat-label">Strong</div>
-          <div className="stat-value">{strong}</div>
-        </div>
-        <div className="stat-card orange">
-          <div className="stat-label">Medium</div>
-          <div className="stat-value">{medium}</div>
-        </div>
-        <div className="stat-card red">
-          <div className="stat-label">Weak</div>
-          <div className="stat-value">{weak}</div>
-        </div>
-      </section>
+      <div className="summary-grid">
+        {[
+          { label: 'Total', value: total, cls: '' },
+          { label: 'Strong', value: strong, cls: 'strong-card' },
+          { label: 'Medium', value: medium, cls: 'medium-card' },
+          { label: 'Weak', value: weak, cls: 'weak-card' },
+        ].map(({ label, value, cls }) => (
+          <div className={`summary-card ${cls}`} key={label}>
+            <div className="stat-title">{label}</div>
+            <div className="stat-value" style={{ fontSize: '1.8rem' }}>{value}</div>
+          </div>
+        ))}
+      </div>
 
-      <section className="health-card">
-        <div className="health-title">Overall Security Score</div>
-        {total ? (
-          <>
-            <div className="progress">
-              <span style={{ width: `${health}%` }} />
-            </div>
-            <div className="health-value">{health}%</div>
-          </>
+      <div className="card" style={{ marginBottom: '1.2rem' }}>
+        <div className="stat-title" style={{ marginBottom: '.6rem' }}>Overall Security Score</div>
+        {score === null ? (
+          <div style={{ color: 'var(--muted)', fontSize: 13 }}>No entries in vault yet.</div>
         ) : (
-          <div className="muted">No entries in vault yet.</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ fontSize: '2rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: scoreColor, minWidth: 64 }}>
+              {score}%
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="score-bar-wrap" style={{ height: 10, marginBottom: '.35rem' }}>
+                <div
+                  className="score-bar-fill"
+                  style={{ width: `${score}%`, background: scoreColor }}
+                />
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {strong} strong · {medium} medium · {weak} weak
+              </div>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: scoreColor, minWidth: 40 }}>
+              {scoreLabel}
+            </div>
+          </div>
         )}
-      </section>
+      </div>
 
-      <section className="report-section">
-        <div className="section-title">
-          Reused Passwords <span>{reused.length} found</span>
+      <div style={{ marginBottom: '1.2rem' }}>
+        <div className="page-header" style={{ marginBottom: '.6rem' }}>
+          <h2 style={{ fontSize: '1rem', fontFamily: 'var(--font-display)', fontWeight: 600 }}>
+            Reused Passwords
+          </h2>
+          <span className="page-subtitle">{reused.length} found</span>
         </div>
-        {reused.length ? (
+        {reused.length === 0 ? (
+          <div className="card empty">✓ No reused passwords detected.</div>
+        ) : (
           <div className="list">
             {reused.map((it) => (
-              <div key={it.id} className="list-item">
-                <div className="item-main">
+              <div className="item medium" key={it.id}>
+                <div className="avatar">{firstLetter(it.website)}</div>
+                <div className="item-meta">
                   <div className="item-title">{it.website}</div>
                   <div className="item-sub">{it.site_username}</div>
                 </div>
-                <span className="tag red">Reused</span>
+                <span className="badge REUSED">Reused</span>
               </div>
             ))}
           </div>
-        ) : (
-          <div className="empty-card">✓ No reused passwords detected.</div>
         )}
-      </section>
+      </div>
 
-      <section className="report-section">
-        <div className="section-title">
-          Risky Entries <span>{risky.length} found</span>
+      <div>
+        <div className="page-header" style={{ marginBottom: '.6rem' }}>
+          <h2 style={{ fontSize: '1rem', fontFamily: 'var(--font-display)', fontWeight: 600 }}>
+            Risky Entries
+          </h2>
+          <span className="page-subtitle">{risky.length} found</span>
         </div>
-        {risky.length ? (
+        {risky.length === 0 ? (
+          <div className="card empty">✓ No risky entries found.</div>
+        ) : (
           <div className="list">
             {risky.map((it) => {
               const lvl = computeStrength(it.password);
               return (
-                <div key={it.id} className="list-item">
-                  <div className="item-main">
+                <div className={`item ${lvl === 'WEAK' ? 'weak' : 'medium'}`} key={it.id}>
+                  <div className="avatar">{firstLetter(it.website)}</div>
+                  <div className="item-meta">
                     <div className="item-title">{it.website}</div>
                     <div className="item-sub">{it.site_username}</div>
                   </div>
-                  <span className={`tag ${lvl === 'WEAK' ? 'red' : 'orange'}`}>
-                    {lvl}
-                  </span>
+                  <div style={{ display: 'flex', gap: '.4rem', alignItems: 'center' }}>
+                    {lvl === 'WEAK' && <span className="badge WEAK">Weak</span>}
+                    <button
+                      className="btn-small primary"
+                      onClick={() =>
+                        navigate('/add', {
+                          state: {
+                            id: it.id,
+                            website: it.website,
+                            username: it.site_username,
+                          },
+                        })
+                      }
+                    >
+                      Fix →
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
-        ) : (
-          <div className="empty-card">✓ No risky entries found.</div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
