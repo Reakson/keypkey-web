@@ -15,6 +15,12 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
   const [regPwd, setRegPwd] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
 
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotToken, setForgotToken] = useState('');
+  const [forgotPwd, setForgotPwd] = useState('');
+  const [forgotConfirm, setForgotConfirm] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [generatedRecoveryKey, setGeneratedRecoveryKey] = useState('');
@@ -22,10 +28,12 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
   const [copyMessage, setCopyMessage] = useState('');
 
   const isLogin = mode === 'login';
+  const isForgot = mode === 'forgot';
 
   function switchMode(m) {
     setMode(m);
     setErr('');
+    setSuccessMessage('');
     setGeneratedRecoveryKey('');
     setPendingLogin(null);
     setCopyMessage('');
@@ -46,6 +54,7 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
     if (!pendingLogin) return;
 
     setErr('');
+    setSuccessMessage('');
     setLoading(true);
 
     try {
@@ -68,6 +77,7 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
   async function handleLogin(e) {
     e.preventDefault();
     setErr('');
+    setSuccessMessage('');
     setLoading(true);
 
     try {
@@ -111,6 +121,42 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
 
       setGeneratedRecoveryKey(data.recoveryKey || '');
       setPendingLogin({ username: regUsername, email: regEmail, password: regPwd });
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+
+  async function handleForgotPassword(e) {
+    e.preventDefault();
+
+    if (forgotPwd !== forgotConfirm) {
+      setErr('New passwords do not match');
+      return;
+    }
+
+    setErr('');
+    setSuccessMessage('');
+    setLoading(true);
+
+    try {
+      const data = await api('/auth/reset-password', {
+        method: 'POST',
+        body: {
+          email: forgotEmail,
+          recoveryKey: forgotToken,
+          newPassword: forgotPwd,
+        },
+      });
+
+      setSuccessMessage(data.message || 'Password reset successful.');
+      setForgotEmail('');
+      setForgotToken('');
+      setForgotPwd('');
+      setForgotConfirm('');
+      setMode('login');
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -162,14 +208,15 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
               <button className={`kk-tab ${isLogin ? 'on' : 'off'}`} onClick={() => switchMode('login')}>
                 Sign in
               </button>
-              <button className={`kk-tab ${!isLogin ? 'on' : 'off'}`} onClick={() => switchMode('register')}>
+              <button className={`kk-tab ${!isLogin && !isForgot ? 'on' : 'off'}`} onClick={() => switchMode('register')}>
                 Create account
               </button>
             </div>
 
             {err && <div className="kk-alert">{err}</div>}
+            {successMessage && <div className="kk-success">{successMessage}</div>}
 
-            {!isLogin && generatedRecoveryKey ? (
+            {!isLogin && !isForgot && generatedRecoveryKey ? (
               <>
                 <div className="kk-form-title">Save your recovery key</div>
                 <div className="kk-form-sub">This key was generated for your account. Store it safely before you continue.</div>
@@ -187,6 +234,67 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
                   </div>
                   <div className="kk-recovery-warning">This key is only shown once. Do not share it with anyone.</div>
                   {copyMessage && <div className="kk-copy-msg">{copyMessage}</div>}
+                </div>
+              </>
+            ) : isForgot ? (
+              <>
+                <div className="kk-form-title">Reset your password</div>
+                <div className="kk-form-sub">Enter your account email, your saved recovery token, and a new password.</div>
+
+                <form onSubmit={handleForgotPassword}>
+                  <div className="kk-lbl">Email address</div>
+                  <input
+                    className="kk-inp"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    autoFocus
+                  />
+
+                  <div className="kk-lbl">Recovery token</div>
+                  <input
+                    className="kk-inp"
+                    value={forgotToken}
+                    onChange={(e) => setForgotToken(e.target.value.toUpperCase())}
+                    placeholder="ABCD-1234-EFGH-5678"
+                    required
+                  />
+
+                  <div className="kk-lbl">New password</div>
+                  <input
+                    className="kk-inp"
+                    type="password"
+                    value={forgotPwd}
+                    onChange={(e) => setForgotPwd(e.target.value)}
+                    placeholder="Enter a new master password"
+                    required
+                  />
+                  <StrengthMeter value={forgotPwd} />
+
+                  <div className="kk-lbl">Confirm new password</div>
+                  <input
+                    className="kk-inp"
+                    type="password"
+                    value={forgotConfirm}
+                    onChange={(e) => setForgotConfirm(e.target.value)}
+                    placeholder="Re-enter your new password"
+                    required
+                  />
+
+                  <div className="kk-help-box">
+                    The recovery token is checked against the hashed token stored in your users table before the
+                    password is updated.
+                  </div>
+
+                  <button className="kk-btn" disabled={loading}>
+                    {loading ? 'Checking token…' : 'Reset password →'}
+                  </button>
+                </form>
+
+                <div className="kk-foot" style={{ marginTop: '.9rem' }}>
+                  Remembered your password? <button onClick={() => switchMode('login')}>Back to sign in</button>
                 </div>
               </>
             ) : isLogin ? (
@@ -220,6 +328,10 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
                     {loading ? 'Unlocking…' : 'Unlock vault →'}
                   </button>
                 </form>
+
+                <div className="kk-foot kk-foot-inline">
+                  <button onClick={() => switchMode('forgot')}>Forgot password?</button>
+                </div>
 
                 <div className="kk-divider">or</div>
 
@@ -462,8 +574,10 @@ body{margin:0;background:var(--kk-paper);font-family:Inter,system-ui,Arial,sans-
 .kk-btn{width:100%;margin-top:16px;padding:14px 16px;border:0;border-radius:14px;background:linear-gradient(180deg,#0891B2 0%, #0E7490 100%);color:#fff;font-weight:800;cursor:pointer}
 .kk-btn:disabled{opacity:.7;cursor:not-allowed}
 .kk-alert{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:12px 14px;border-radius:14px;margin-bottom:12px;font-size:.92rem}
+.kk-success{background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:12px 14px;border-radius:14px;margin-bottom:12px;font-size:.92rem}
 .kk-divider{display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:.85rem;margin:14px 0}
 .kk-foot{font-size:.92rem;color:var(--kk-sub);text-align:center}
+.kk-foot-inline{margin-top:12px}
 .kk-foot button{background:none;border:0;padding:0;color:#0891B2;font-weight:700;cursor:pointer}
 .kk-sec{margin-top:18px;text-align:center;font-size:.8rem;color:#64748B}
 @media (max-width: 980px){
