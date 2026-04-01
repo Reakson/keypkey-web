@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../lib/api';
+import { api } from '../utils/api';
 
 function computeStrength(pwd = '') {
   let score = 0;
@@ -73,7 +73,9 @@ export default function Dashboard({ itemsForStats, setItemsForStats }) {
     return { total: items.length, strong, medium, weak, reused, risky };
   }, [items]);
 
-  const health = total ? Math.round(((strong * 100) + (medium * 60) + (weak * 20)) / total) : 0;
+  const health = total
+    ? Math.round(((strong * 100) + (medium * 60) + (weak * 20)) / total)
+    : 0;
 
   if (loading) {
     return (
