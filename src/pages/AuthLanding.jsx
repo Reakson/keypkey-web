@@ -14,17 +14,55 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
   const [regEmail, setRegEmail] = useState('');
   const [regPwd, setRegPwd] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
-  const [recoveryPhrase, setRecoveryPhrase] = useState('');
 
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
+  const [generatedRecoveryKey, setGeneratedRecoveryKey] = useState('');
+  const [pendingLogin, setPendingLogin] = useState(null);
+  const [copyMessage, setCopyMessage] = useState('');
 
   const isLogin = mode === 'login';
 
   function switchMode(m) {
     setMode(m);
     setErr('');
+    setGeneratedRecoveryKey('');
+    setPendingLogin(null);
+    setCopyMessage('');
+  }
+
+  async function copyRecoveryKey() {
+    if (!generatedRecoveryKey) return;
+
+    try {
+      await navigator.clipboard.writeText(generatedRecoveryKey);
+      setCopyMessage('Recovery key copied.');
+    } catch (error) {
+      setCopyMessage('Copy failed. Please save the key manually.');
+    }
+  }
+
+  async function finishRegistration() {
+    if (!pendingLogin) return;
+
+    setErr('');
+    setLoading(true);
+
+    try {
+      const data = await api('/auth/login', {
+        method: 'POST',
+        body: { email: pendingLogin.email, password: pendingLogin.password },
+      });
+
+      const user = { username: pendingLogin.username, email: pendingLogin.email };
+      setSession({ token: data.token, user });
+      setUser(user);
+      navigate('/vault');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleLogin(e) {
@@ -57,39 +95,22 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
       return;
     }
 
-    if (!recoveryPhrase.trim()) {
-      setErr('Recovery phrase is required');
-      return;
-    }
-
-    if (recoveryPhrase.trim().length < 6) {
-      setErr('Recovery phrase should be at least 6 characters');
-      return;
-    }
-
     setErr('');
+    setCopyMessage('');
     setLoading(true);
 
     try {
-      await api('/auth/register', {
+      const data = await api('/auth/register', {
         method: 'POST',
         body: {
           username: regUsername,
           email: regEmail,
           password: regPwd,
-          recovery_phrase: recoveryPhrase.trim(),
         },
       });
 
-      const data = await api('/auth/login', {
-        method: 'POST',
-        body: { email: regEmail, password: regPwd },
-      });
-
-      const user = { username: regUsername, email: regEmail };
-      setSession({ token: data.token, user });
-      setUser(user);
-      navigate('/vault');
+      setGeneratedRecoveryKey(data.recoveryKey || '');
+      setPendingLogin({ username: regUsername, email: regEmail, password: regPwd });
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -148,9 +169,29 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
 
             {err && <div className="kk-alert">{err}</div>}
 
-            {isLogin ? (
+            {!isLogin && generatedRecoveryKey ? (
               <>
-                <div className="kk-form-title">Welcome to KeypKey</div>
+                <div className="kk-form-title">Save your recovery key</div>
+                <div className="kk-form-sub">This key was generated for your account. Store it safely before you continue.</div>
+
+                <div className="kk-recovery-card">
+                  <div className="kk-recovery-label">Generated recovery key</div>
+                  <div className="kk-recovery-value">{generatedRecoveryKey}</div>
+                  <div className="kk-recovery-actions">
+                    <button type="button" className="kk-btn kk-btn-secondary" onClick={copyRecoveryKey}>
+                      Copy key
+                    </button>
+                    <button type="button" className="kk-btn" onClick={finishRegistration} disabled={loading}>
+                      {loading ? 'Opening vault…' : 'I saved it — continue →'}
+                    </button>
+                  </div>
+                  <div className="kk-recovery-warning">This key is only shown once. Do not share it with anyone.</div>
+                  {copyMessage && <div className="kk-copy-msg">{copyMessage}</div>}
+                </div>
+              </>
+            ) : isLogin ? (
+              <>
+                <div className="kk-form-title">Welcome back</div>
                 <div className="kk-form-sub">Sign in to access your encrypted vault.</div>
 
                 <form onSubmit={handleLogin}>
@@ -233,37 +274,9 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
                     required
                   />
 
-                  <div className="kk-lbl-row">
-                    <div className="kk-lbl" style={{ margin: 0 }}>
-                      Recovery phrase
-                    </div>
-                    <button
-                      type="button"
-                      className="kk-help-btn"
-                      onClick={() => setShowRecoveryHelp((v) => !v)}
-                    >
-                      {showRecoveryHelp ? 'Hide help' : 'What is this?'}
-                    </button>
-                  </div>
-
-                  {showRecoveryHelp && (
-                    <div className="kk-help-box">
-                      This phrase can help verify your identity or recover access later, depending on your backend
-                      recovery flow. Keep it private and store it somewhere safe.
-                    </div>
-                  )}
-
-                  <input
-                    className="kk-inp"
-                    type="text"
-                    value={recoveryPhrase}
-                    onChange={(e) => setRecoveryPhrase(e.target.value)}
-                    placeholder="Enter a memorable secret phrase"
-                    required
-                  />
-
-                  <div className="kk-recovery-note">
-                    Example: <span>Blue Mango River 204</span>
+                  <div className="kk-help-box">
+                    A unique recovery key will be generated automatically when your account is created. You will
+                    see it once and should save it somewhere safe.
                   </div>
 
                   <button className="kk-btn" disabled={loading}>
@@ -434,7 +447,14 @@ body{margin:0;background:var(--kk-paper);font-family:Inter,system-ui,Arial,sans-
 .kk-lbl{font-size:.82rem;font-weight:700;color:#334155;margin:12px 0 7px}
 .kk-lbl-row{display:flex;align-items:center;justify-content:space-between;margin:12px 0 7px;gap:12px}
 .kk-help-btn{background:none;border:0;padding:0;color:#0891B2;font-size:.8rem;font-weight:700;cursor:pointer}
-.kk-help-box{margin-bottom:10px;padding:11px 12px;border-radius:12px;background:#ECFEFF;border:1px solid #A5F3FC;color:#155E75;font-size:.86rem;line-height:1.45}
+.kk-help-box{margin:12px 0 10px;padding:11px 12px;border-radius:12px;background:#ECFEFF;border:1px solid #A5F3FC;color:#155E75;font-size:.86rem;line-height:1.45}
+.kk-recovery-card{padding:16px;border-radius:18px;background:#F8FAFC;border:1px solid var(--kk-line)}
+.kk-recovery-label{font-size:.78rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748B;margin-bottom:8px}
+.kk-recovery-value{padding:14px 15px;border-radius:14px;background:#0F172A;color:#F8FAFC;font-size:1.02rem;font-weight:800;letter-spacing:.08em;line-height:1.7;word-break:break-word}
+.kk-recovery-actions{display:grid;gap:10px;margin-top:14px}
+.kk-btn-secondary{margin-top:0;background:#ECFEFF;color:#0E7490;border:1px solid #A5F3FC}
+.kk-recovery-warning{margin-top:12px;font-size:.84rem;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;padding:10px 12px;border-radius:12px}
+.kk-copy-msg{margin-top:10px;font-size:.84rem;color:#155E75}
 .kk-recovery-note{margin-top:7px;font-size:.8rem;color:#64748B}
 .kk-recovery-note span{font-weight:700;color:#334155}
 .kk-inp{width:100%;padding:14px 15px;border-radius:14px;border:1px solid var(--kk-line);outline:none;font-size:.98rem;background:#fff}
