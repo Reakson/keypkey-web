@@ -284,7 +284,7 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
                   />
 
                   <div className="kk-help-box">
-                    The recovery token is checked against the hashed token stored in your users table before the
+                    The recovery token will be checked against our hashed token records before the
                     password is updated.
                   </div>
 
