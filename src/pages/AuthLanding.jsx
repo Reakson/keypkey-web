@@ -86,8 +86,9 @@ export default function AuthLanding({ setUser, initialMode = 'login' }) {
         body: { email: loginEmail, password: loginPwd },
       });
 
-      setSession({ token: data.token, user: data.user });
-      setUser(data.user);
+      const user = { email: loginEmail };
+      setSession({ token: data.token, user });
+      setUser(user);
       navigate('/vault');
     } catch (e) {
       setErr(e.message);
